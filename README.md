@@ -7,13 +7,12 @@ Web UI for [demucs](https://github.com/adefossez/demucs) stem separation. Drag a
 Requires `demucs` to be installed and in your PATH.
 
 ```
-pip install -r requirements.txt
-python app.py
+uv run app.py
 ```
 
 Then go to `http://localhost:5000`.
 
-Optionally configure host and port: `python app.py 0.0.0.0 8080`
+Optionally configure host and port: `uv run app.py 0.0.0.0 8080`
 
 ## Supported models
 

@@ -1,3 +1,4 @@
+import io
 import uuid
 import shutil
 import subprocess
@@ -265,20 +266,17 @@ def download(job_id):
     if not stem_files:
         return "No output files found", 404
 
-    zip_path = output_dir / "stems.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for sf in stem_files:
             zf.write(sf, sf.name)
+    buf.seek(0)
 
-    response = send_file(zip_path, as_attachment=True, download_name="stems.zip")
+    job_dir = output_dir.parent
+    shutil.rmtree(job_dir, ignore_errors=True)
+    jobs.pop(job_id, None)
 
-    @response.call_on_close
-    def cleanup():
-        job_dir = Path(job["output_dir"]).parent
-        shutil.rmtree(job_dir, ignore_errors=True)
-        jobs.pop(job_id, None)
-
-    return response
+    return send_file(buf, as_attachment=True, download_name="stems.zip")
 
 
 if __name__ == "__main__":

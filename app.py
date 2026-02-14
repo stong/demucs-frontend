@@ -1,4 +1,5 @@
 import io
+import time
 import uuid
 import shutil
 import subprocess
@@ -16,8 +17,22 @@ ALLOWED_FORMATS = {"mp3", "flac"}
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "stem-extractor"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+MAX_AGE = 24 * 60 * 60  # 24 hours
+
 # Store job info: job_id -> {input_path, output_dir, model, format, status}
 jobs = {}
+
+
+def cleanup_old_jobs():
+    upload_dir = str(UPLOAD_DIR.resolve())
+    assert upload_dir.startswith("/tmp") and ".." not in upload_dir
+    now = time.time()
+    for d in UPLOAD_DIR.iterdir():
+        if d.is_dir() and (now - d.stat().st_mtime) > MAX_AGE:
+            assert str(d.resolve()).startswith(upload_dir + "/")
+            print(f'Cleaning up {d}')
+            shutil.rmtree(d, ignore_errors=True)
+            jobs.pop(d.name, None)
 
 HTML = """
 <!DOCTYPE html>
@@ -172,6 +187,7 @@ def index():
 
 @app.route("/upload", methods=["POST"])
 def upload():
+    cleanup_old_jobs()
     f = request.files.get("file")
     if not f:
         return jsonify(error="No file"), 400
@@ -271,10 +287,6 @@ def download(job_id):
         for sf in stem_files:
             zf.write(sf, sf.name)
     buf.seek(0)
-
-    job_dir = output_dir.parent
-    shutil.rmtree(job_dir, ignore_errors=True)
-    jobs.pop(job_id, None)
 
     return send_file(buf, as_attachment=True, download_name="stems.zip")
 

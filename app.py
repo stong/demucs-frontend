@@ -1,10 +1,10 @@
-import os
 import uuid
 import shutil
 import subprocess
 import zipfile
 import tempfile
 from pathlib import Path
+from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, send_file, Response, render_template_string
 
 app = Flask(__name__)
@@ -187,7 +187,8 @@ def upload():
     job_dir = UPLOAD_DIR / job_id
     job_dir.mkdir(parents=True)
 
-    input_path = job_dir / f.filename
+    safe_name = secure_filename(f.filename) or "audio"
+    input_path = job_dir / safe_name
     f.save(input_path)
 
     output_dir = job_dir / "output"
@@ -208,6 +209,10 @@ def stream(job_id):
     job = jobs.get(job_id)
     if not job:
         return "Not found", 404
+    if job["status"] != "uploaded":
+        return "Already started", 409
+
+    job["status"] = "running"
 
     def generate():
         fmt_flag = "--mp3" if job["format"] == "mp3" else "--flac"
@@ -265,8 +270,22 @@ def download(job_id):
         for sf in stem_files:
             zf.write(sf, sf.name)
 
-    return send_file(zip_path, as_attachment=True, download_name="stems.zip")
+    response = send_file(zip_path, as_attachment=True, download_name="stems.zip")
+
+    @response.call_on_close
+    def cleanup():
+        job_dir = Path(job["output_dir"]).parent
+        shutil.rmtree(job_dir, ignore_errors=True)
+        jobs.pop(job_id, None)
+
+    return response
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    import sys
+    if not shutil.which("demucs"):
+        print("Error: demucs not found in PATH")
+        sys.exit(1)
+    host = sys.argv[1] if len(sys.argv) > 1 else "127.0.0.1"
+    port = int(sys.argv[2]) if len(sys.argv) > 2 else 5000
+    app.run(debug=True, host=host, port=port)
